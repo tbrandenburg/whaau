@@ -1,0 +1,73 @@
+version: "3.8"
+
+networks:
+  internal:
+    driver: bridge
+    name: webhook-internal
+
+volumes:
+  webhook-shared:
+    name: webhook-shared
+
+services:
+  listener:
+    build: ./listener
+    restart: unless-stopped
+    ports:
+      - "${LISTENER_HOST_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      LAUNCHER_URL: "http://launcher:8080/run"
+      LAUNCHER_TOKEN: ${LAUNCHER_TOKEN}
+    networks:
+      - internal
+    depends_on:
+      launcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  launcher:
+    build: ./launcher
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      PORT: "8080"
+      LAUNCHER_TOKEN: ${LAUNCHER_TOKEN}
+      RUNNER_IMAGE: "local/webhook-runner:latest"
+      SHARED_VOLUME_NAME: "webhook-shared"
+      RUNNER_NETWORK: "webhook-internal"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-988}"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  runner:
+    build: ./runner
+    image: local/webhook-runner:latest
+    profiles:
+      - runner
+    networks:
+      - internal

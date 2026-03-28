@@ -1,0 +1,6 @@
+version: "3.8"
+
+services:
+  launcher:
+    environment:
+      SHARED_VOLUME_NAME: "${PWD}/test/output"
